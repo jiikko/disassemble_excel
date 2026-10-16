@@ -28,12 +28,20 @@ func Main() {
 	maxCells := flag.Int("max-cells", 100000, "sheets with more cells than this also get a .slim.tsv (0 disables slim)")
 	sheetsCSV := flag.String("sheets", "", "comma-separated sheet names to extract (default: all)")
 	force := flag.Bool("f", false, "overwrite the output directory if it already exists")
-	flag.Usage = usage
+	flag.Usage = func() { usage(os.Stderr) }
 
 	// Go's flag package stops parsing at the first non-flag argument, so accept
 	// both "<file> -o out" and "-o out <file>" by pulling a leading file
 	// argument out before parsing the rest.
 	rawArgs := os.Args[1:]
+	// ヘルプは求められて出す出力なので stdout へ出して rc=0 で終える (使い方の誤りのときだけ stderr・rc=2)。
+	// `cmd --help | less` や、stdout だけを読む呼び出し元 (エージェント・スクリプト) からも読めるようにする
+	for _, a := range rawArgs {
+		if a == "-h" || a == "-help" || a == "--help" {
+			usage(os.Stdout)
+			os.Exit(0)
+		}
+	}
 	var src string
 	if len(rawArgs) > 0 && !strings.HasPrefix(rawArgs[0], "-") {
 		src, rawArgs = rawArgs[0], rawArgs[1:]
@@ -43,7 +51,7 @@ func Main() {
 		src = flag.Arg(0)
 	}
 	if src == "" {
-		usage()
+		usage(os.Stderr)
 		os.Exit(2)
 	}
 
@@ -53,47 +61,74 @@ func Main() {
 	}
 }
 
-func usage() {
-	fmt.Fprintf(os.Stderr, "%s", `disassemble_excel `+toolVersion+` — Excel のシート・数式・VBA を diff 可能なテキストに分解する
+func usage(w io.Writer) {
+	_, _ = io.WriteString(w, `disassemble_excel `+toolVersion+` — Excel のシート・数式・VBA を diff 可能なテキストに分解する
 
 .xlsx/.xlsm ワークブック 1 ファイルを、行指向のプレーンテキスト群に書き出します:
-全セルの数式とキャッシュ値の両方、定義名、VBA マクロのソースコード。
-数式は抽出のみで評価（再計算）はしません。共有数式は展開され、各セルが
-実際に計算している数式が見えます。.xlsx/.xlsm の解体は完全オフラインで動作します。
+全セルの数式とキャッシュ値の両方、定義名、VBA マクロのソースコード、
+図形・ボタンに割り当てられたマクロ。数式は抽出のみで評価（再計算）はしません。
+共有数式は展開され、各セルが実際に計算している数式が見えます。
+.xlsx/.xlsm の解体は完全オフラインで動作し、入力ファイルは変更しません。
 
 .xlsb（バイナリ形式）は直接解体できませんが、LibreOffice (soffice) が
-PATH かインストール先に見つかれば、自動で .xlsm に変換してから解体します
-（この場合のみ外部プロセスを起動します）。
+PATH か /Applications/LibreOffice.app に見つかれば、自動で .xlsm に変換してから
+解体します（この場合のみ外部プロセスを起動します。無ければ導入方法を表示して rc=1）。
 
 使い方:
   disassemble_excel <file.xlsx|.xlsm|.xlsb> [options]
-  （フラグはファイル引数の前後どちらに置いてもよい）
+  disassemble_excel -h | --help        このヘルプを stdout に出す
+  （フラグはファイル引数の前後どちらに置いてもよい。1 回の起動で 1 ファイル）
 
 オプション:
-  -o DIR         出力先ディレクトリ（既定: <ファイル名から拡張子を除いたもの>/）
-  -sheets a,b,c  指定したシートだけを抽出（既定: 全シート）
+  -o DIR         出力先ディレクトリ（既定: カレントの <ファイル名から拡張子を除いたもの>/）
+  -sheets a,b,c  指定したシートだけを抽出（既定: 全シート。名前は完全一致）
   -max-cells N   セル数が N を超えるシートには .slim.tsv も出力（既定 100000、0 で無効）
-  -no-grid       グリッド形式の values.csv を出力しない
+  -no-grid       グリッド形式の values.csv を出力しない（巨大シートで速く・小さくしたいとき）
   -no-vba        VBA マクロを抽出しない
-  -f             出力先ディレクトリが既存でも上書きする
+  -f             出力先ディレクトリが空でなくても書き込む。上書きするだけで既存ファイルは
+                 消さないので、前回の出力（消えたシート・モジュールのファイル）が残る。
+                 作り直すときは出力先を消してから実行する
 
 出力レイアウト:
   <out>/
-    manifest.json            元ファイルの SHA-256、シートごとの寸法・セル数、モジュール一覧
+    README.md                来歴: 元ファイルの絶対パス・SHA-256・抽出日時と、各ファイルの意味
+    manifest.json            元ファイルの SHA-256、シートごとの寸法・セル数・数式数、
+                             VBA モジュール一覧、マクロ割り当てオブジェクト一覧
     defined_names.tsv        name  scope  refers_to（名前付き範囲、LAMBDA 引数）
-    sheets/<name>.cells.tsv  cell  type  formula  value — 1 セル 1 行、
-                             (行, 列) でソート、空セルは省略。値の中のタブ・改行は
-                             \t \n にエスケープされる
+    sheets/<name>.cells.tsv  cell  type  formula  value — 1 セル 1 行、(行, 列) でソート、
+                             空セルは省略。formula は先頭に = が付く（数式の無いセルは空）
     sheets/<name>.values.csv キャッシュ値のグリッド（目視確認用）
     sheets/<name>.slim.tsv   数式セルのみの圧縮ビュー（-max-cells 超のシートにだけ出力）
     vba/<module>.bas|.cls    コードを持つ VBA モジュールごとに 1 ファイル
     vba_index.tsv            module  proc  kind  module_line — Sub/Function/Property の索引
+                             (module_line は vba/<module> の中の 1 始まりの行番号)
     objects.tsv              sheet  object  kind  anchor  macro — 画像・図形・ボタンに
                              割り当てられた（クリックで実行される）マクロ。画像自体は復元しない
 
-  value は Excel がファイルに最後に保存したキャッシュ値であり、再計算結果ではない。
-  空の VBA モジュール（シートクラスのスタブ等）はファイル化されず、
-  manifest.json に "empty": true として記録される。
+値の読み方:
+  - type は Excel の生のセル型: n 数値 / s 共有文字列 / inlineStr インライン文字列 /
+    str 数式が返した文字列 / b 真偽値 (1/0) / e エラー (#DIV/0! 等)
+  - value は Excel がファイルに最後に保存したキャッシュ値で、再計算結果ではない。
+    表示書式は適用しない: 日付は通し番号（例 46054）、パーセントは小数のまま出る
+  - TSV の値の中の \ タブ 改行 CR は \\ \t \n \r にエスケープされ、1 セルは必ず 1 行
+  - 出力は UTF-8。VBA のソースはプロジェクトのコードページ（日本語なら Shift_JIS）から変換済み
+  - 空の VBA モジュール（シートクラスのスタブ等）はファイル化されず、
+    manifest.json に "empty": true として記録される
+
+エージェント・スクリプトから使うとき:
+  - stdout には何も出さない。進捗（シートごとのセル数など）と結果の要約は stderr に、
+    エラーは "disassemble_excel: <理由>" の 1 行で stderr に出る
+  - 成果物はすべて出力先のファイル。まず manifest.json（全体の地図）を読み、
+    数式は grep -n '=SUM' <out>/sheets/*.cells.tsv、マクロは vba_index.tsv で
+    手続きの位置を引いてから vba/<module> を読む、の順が速い
+  - 特定セルは grep -P '^B12\t' <out>/sheets/<name>.cells.tsv で引ける
+  - 巨大シートの cells.tsv は数十 MB になりうる。全体を読まず slim.tsv や grep で絞る
+
+抽出しないもの:
+  書式（色・罫線・表示形式）、条件付き書式、データ入力規則、グラフ、ピボットテーブル、
+  コメント・メモ、ハイパーリンク、結合セルの範囲、画像・図形の見た目、シートの表示状態。
+  グループ図形の内側の子に個別に割り当てたマクロも拾わない（グループ自体の割り当ては拾う）。
+  ワークブックはメモリに読み込む（~70 MB のマクロ付きで約 1 GB）。
 
 実行例:
   # すべてを ./report/ に抽出する
@@ -109,7 +144,7 @@ PATH かインストール先に見つかれば、自動で .xlsm に変換し�
   diff -ru out/report_v1/sheets out/report_v2/sheets
 
 終了ステータス:
-  0 成功, 1 抽出エラー, 2 使い方の誤り
+  0 成功（-h / --help も 0）, 1 抽出エラー（出力先が空でない・読めないファイル等）, 2 使い方の誤り
 `)
 }
 
