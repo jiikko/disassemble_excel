@@ -128,7 +128,7 @@ value はワークブックに保存されたキャッシュ値。値の中の�
 - **共有数式・配列数式** は [excelize](https://github.com/xuri/excelize) で展開する。
   展開が必要なのは共有数式の子セルだけで、値だけのセルには不要。
 - **VBA** は純 Go のパイプラインで抽出する。[mscfb](https://github.com/richardlehane/mscfb)
-  が OLE2 コンテナを開き、同梱の `ovba` パッケージが [MS-OVBA] の解凍と
+  が OLE2 コンテナを開き、同梱の `internal/ovba` パッケージが [MS-OVBA] の解凍と
   `dir` ストリームの解析を実装する。モジュールソースはプロジェクトのコードページで
   デコードする。
 

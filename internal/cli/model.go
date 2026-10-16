@@ -1,4 +1,4 @@
-package main
+package cli
 
 // Cell is one non-empty worksheet cell.
 type Cell struct {

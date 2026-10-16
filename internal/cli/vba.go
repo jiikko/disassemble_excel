@@ -1,4 +1,4 @@
-package main
+package cli
 
 import (
 	"bytes"
@@ -16,7 +16,7 @@ import (
 	"golang.org/x/text/encoding/traditionalchinese"
 	"golang.org/x/text/transform"
 
-	"github.com/jiikko/disassemble_excel/ovba"
+	"github.com/jiikko/disassemble_excel/internal/ovba"
 )
 
 // VBA identifiers may contain non-ASCII letters (e.g. Japanese: `Sub gh用()`),
