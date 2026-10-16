@@ -7,7 +7,8 @@ Excel ワークブック (`.xlsx` / `.xlsm` / `.xlsb`) を diff・grep できる
 - `main.go` (root) — `cli.Main()` を呼ぶだけ。`go install github.com/jiikko/disassemble_excel@latest` で名前どおりのバイナリにするため root に置く
 - `internal/cli/main.go` — フラグ解析と全体の処理フロー (`Main`)。`.xlsb` は `convertXLSB` が LibreOffice で .xlsm に変換してから解体する
 - `internal/cli/model.go` — `Cell` などの共有データ型
-- `internal/cli/sheets.go` — ワークシート XML を直接パースしてセル (数式・値・型) を読む。共有数式・配列数式は excelize で展開
+- `internal/cli/sheets.go` — ワークシート XML を直接パースしてセル (数式・値・型) を読む。共有数式の子セルは親セル (si ごと) から展開する
+- `internal/cli/sharedformula.go` — 共有数式の子セル用に、親の数式の相対参照をずらす (`shiftFormula`)。excelize の `GetCellFormula` はシート名付き参照をずらさないので使わない (#2)
 - `internal/cli/objects.go` — シート上のマクロ割り当てオブジェクト (画像・図形・ボタン) の抽出
 - `internal/cli/writer.go` — 出力ファイル (`cells.tsv` / `values.csv` / `manifest.json` / 出力先 README 等) の書き出し
 - `internal/cli/defnames.go` — 定義名 (名前付き範囲・LAMBDA 引数) の抽出
