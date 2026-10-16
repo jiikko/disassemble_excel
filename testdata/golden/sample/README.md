@@ -11,7 +11,7 @@ Excel を開かずに、シートのセル数式・キャッシュ値・定義�
 | 生成ツール | disassemble_excel v0.1.0 (https://github.com/jiikko/disassemble_excel) |
 | 元 Excel ファイル（絶対パス） | `<ABS_PATH>` |
 | 元 Excel ファイル名 | `sample.xlsm` |
-| 元ファイルの SHA-256 | `6a263a539897aff3f857689c65adf937ae8ef54364414f992f054f2244cdc0cb` |
+| 元ファイルの SHA-256 | `6ae980aaefc01eca2978438586b1b5b50007eced4a792925f3fb3d353c98a8be` |
 
 > 数式は **抽出のみで、評価（再計算）はしていません**。各セルの `value` 列は Excel が
 > 最後にファイルへ保存したキャッシュ値であり、このツールが計算した値ではありません。

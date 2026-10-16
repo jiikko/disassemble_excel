@@ -90,7 +90,7 @@ func buildFixture(t *testing.T, path string) {
 	// Sheet parts besides cells (sheetextras.go).
 	set("A10", "エスケープ")
 	set("B10", "ESCAPE_PLACEHOLDER") // replaced in the XML below: excelize would protect a literal _x000D_
-	must(f.AddComment("Summary", excelize.Comment{Cell: "B7", Author: "koji", Text: "Data の小計の合計"}))
+	must(f.AddComment("Summary", excelize.Comment{Cell: "B7", Author: "Reviewer", Text: "Data の小計の合計"}))
 	must(f.SetCellHyperLink("Summary", "A1", "https://example.com/spec", "External"))
 	whole := excelize.NewDataValidation(true)
 	whole.Sqref = "B2:B5"
