@@ -50,14 +50,14 @@ const vmlXML = `<xml xmlns:v="urn:schemas-microsoft-com:vml" xmlns:x="urn:schema
  </v:shape>
 </xml>`
 
-const sheetRels = `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
+const sheetRelsXML = `<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/drawing" Target="../drawings/drawing1.xml"/>
  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/vmlDrawing" Target="../drawings/vmlDrawing1.vml"/>
 </Relationships>`
 
 func TestExtractObjects(t *testing.T) {
 	zr := zipReaderFrom(t, map[string]string{
-		"xl/worksheets/_rels/sheet1.xml.rels": sheetRels,
+		"xl/worksheets/_rels/sheet1.xml.rels": sheetRelsXML,
 		"xl/drawings/drawing1.xml":            drawingXML,
 		"xl/drawings/vmlDrawing1.vml":         vmlXML,
 	})
@@ -80,7 +80,7 @@ func TestExtractObjects(t *testing.T) {
 
 func TestExtractObjectsSheetFilter(t *testing.T) {
 	zr := zipReaderFrom(t, map[string]string{
-		"xl/worksheets/_rels/sheet1.xml.rels": sheetRels,
+		"xl/worksheets/_rels/sheet1.xml.rels": sheetRelsXML,
 		"xl/drawings/drawing1.xml":            drawingXML,
 		"xl/drawings/vmlDrawing1.vml":         vmlXML,
 	})

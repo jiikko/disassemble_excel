@@ -6,6 +6,7 @@ import (
 	"archive/zip"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"flag"
 	"fmt"
 	"io"
@@ -14,8 +15,6 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
-	"github.com/xuri/excelize/v2"
 )
 
 const toolVersion = "0.1.0"
@@ -92,9 +91,11 @@ PATH か /Applications/LibreOffice.app に見つかれば、自動で .xlsm に�
 出力レイアウト:
   <out>/
     README.md                来歴: 元ファイルの絶対パス・SHA-256・抽出日時と、各ファイルの意味
-    manifest.json            元ファイルの SHA-256、シートごとの寸法・セル数・数式数、
-                             VBA モジュール一覧、マクロ割り当てオブジェクト一覧
-    defined_names.tsv        name  scope  refers_to（名前付き範囲、LAMBDA 引数）
+    manifest.json            元ファイルの SHA-256、シートごとの状態 (visible / hidden /
+                             veryHidden)・寸法・セル数・数式数、VBA モジュール一覧、
+                             マクロ割り当てオブジェクト一覧、下の TSV の件数 (counts)
+    defined_names.tsv        name  scope  refers_to  hidden（名前付き範囲、LAMBDA 引数。
+                             hidden は隠し名なら 1）
     sheets/<name>.cells.tsv  cell  type  formula  value — 1 セル 1 行、(行, 列) でソート、
                              空セルは省略。formula は先頭に = が付く（数式の無いセルは空）
     sheets/<name>.values.csv キャッシュ値のグリッド（目視確認用）
@@ -104,6 +105,14 @@ PATH か /Applications/LibreOffice.app に見つかれば、自動で .xlsm に�
                              (module_line は vba/<module> の中の 1 始まりの行番号)
     objects.tsv              sheet  object  kind  anchor  macro — 画像・図形・ボタンに
                              割り当てられた（クリックで実行される）マクロ。画像自体は復元しない
+    data_validations.tsv     sheet  sqref  type  operator  formula1  formula2  allow_blank
+                             — 入力規則（入力できる値・リストの出どころ）
+    tables.tsv               table  sheet  ref  column  calculated_formula — テーブルの
+                             範囲と列。構造化参照 Sales[Amount] を範囲に戻すのに使う
+    comments.tsv             sheet  cell  author  text — セルのコメント（メモ）
+    hyperlinks.tsv           sheet  cell  target  location  display
+  （objects.tsv 以下の TSV は該当が 1 件以上あるときだけ出る。件数は manifest.json の counts）
+  （data_validations / tables の数式は XML のままで、先頭に = は付かない）
 
 値の読み方:
   - type は Excel の生のセル型: n 数値 / s 共有文字列 / inlineStr インライン文字列 /
@@ -112,6 +121,8 @@ PATH か /Applications/LibreOffice.app に見つかれば、自動で .xlsm に�
     表示書式は適用しない: 日付は通し番号（例 46054）、パーセントは小数のまま出る
   - TSV の値の中の \ タブ 改行 CR は \\ \t \n \r にエスケープされ、1 セルは必ず 1 行
   - 出力は UTF-8。VBA のソースはプロジェクトのコードページ（日本語なら Shift_JIS）から変換済み
+  - 共有文字列・インライン文字列の _x000D_ のようなエスケープ（XML に書けない文字の表現）は
+    元の文字に戻してある。タブ・改行・CR 以外の制御文字は \x00 の形で書く（grep がバイナリ扱いしないように）
   - 空の VBA モジュール（シートクラスのスタブ等）はファイル化されず、
     manifest.json に "empty": true として記録される
 
@@ -124,9 +135,9 @@ PATH か /Applications/LibreOffice.app に見つかれば、自動で .xlsm に�
   - 特定セルは grep -P '^B12\t' <out>/sheets/<name>.cells.tsv で引ける
   - 巨大シートの cells.tsv は数十 MB になりうる。全体を読まず slim.tsv や grep で絞る
 
-抽出しないもの:
-  書式（色・罫線・表示形式）、条件付き書式、データ入力規則、グラフ、ピボットテーブル、
-  コメント・メモ、ハイパーリンク、結合セルの範囲、画像・図形の見た目、シートの表示状態。
+抽出しないもの（見た目に属するもの。このツールはロジックを解体する）:
+  書式（色・罫線・フォント・表示形式）、条件付き書式、結合セル、グラフ、ピボットテーブル、
+  スライサー、画像・図形の見た目、非表示の行・列、ウィンドウ枠の固定、シートの保護、文書プロパティ。
   グループ図形の内側の子に個別に割り当てたマクロも拾わない（グループ自体の割り当ては拾う）。
   ワークブックはメモリに読み込む（~70 MB のマクロ付きで約 1 GB）。
 
@@ -144,7 +155,8 @@ PATH か /Applications/LibreOffice.app に見つかれば、自動で .xlsm に�
   diff -ru out/report_v1/sheets out/report_v2/sheets
 
 終了ステータス:
-  0 成功（-h / --help も 0）, 1 抽出エラー（出力先が空でない・読めないファイル等）, 2 使い方の誤り
+  0 成功（-h / --help も 0）, 1 抽出エラー（出力先が空でない・読めないファイル・
+  xl/workbook.xml の無い zip 等）, 2 使い方の誤り
 `)
 }
 
@@ -174,14 +186,12 @@ func run(src, outDir, sheetsCSV string, maxCells int, noVBA, noGrid, force bool)
 		return err
 	}
 
-	xl, err := excelize.OpenFile(src)
-	if err != nil {
-		return fmt.Errorf("open workbook: %w", err)
-	}
-	defer func() { _ = xl.Close() }()
-
 	zr, err := zip.OpenReader(src)
 	if err != nil {
+		if isOLE2(src) {
+			return errors.New("zip ではなく OLE2 形式のファイル: パスワードで暗号化されたブックか、旧形式の .xls。" +
+				"Excel でパスワードを外すか、.xlsx / .xlsm で保存し直す")
+		}
 		return fmt.Errorf("open zip: %w", err)
 	}
 	defer func() { _ = zr.Close() }()
@@ -194,8 +204,16 @@ func run(src, outDir, sheetsCSV string, maxCells int, noVBA, noGrid, force bool)
 		}
 	}
 
-	shared := parseSharedStrings(&zr.Reader)
-	wbSheets := parseWorkbookSheets(&zr.Reader)
+	shared, err := parseSharedStrings(&zr.Reader)
+	if err != nil {
+		return err
+	}
+	wb, err := parseWorkbook(&zr.Reader)
+	if err != nil {
+		return err
+	}
+	wbSheets := wb.Sheets
+	var ex extras
 
 	sheetsDir := filepath.Join(outDir, "sheets")
 	if err := os.MkdirAll(sheetsDir, 0o755); err != nil {
@@ -207,10 +225,11 @@ func run(src, outDir, sheetsCSV string, maxCells int, noVBA, noGrid, force bool)
 		if only != nil && !only[ws.Name] {
 			continue
 		}
-		sh := extractSheet(&zr.Reader, ws.Target, ws.Name, shared)
-		if sh == nil {
-			continue
+		sh, err := extractSheet(&zr.Reader, ws.Target, ws.Name, shared)
+		if err != nil {
+			return err
 		}
+		ex.add(&zr.Reader, ws, sh)
 		fileBase := filepath.Join(sheetsDir, sanitizeFilename(ws.Name))
 		if err := writeCellsTSV(fileBase+".cells.tsv", sh); err != nil {
 			return err
@@ -227,13 +246,17 @@ func run(src, outDir, sheetsCSV string, maxCells int, noVBA, noGrid, force bool)
 			}
 		}
 		sheetManifests = append(sheetManifests, SheetManifest{
-			Name: ws.Name, Dimension: sh.Dimension, Cells: len(sh.Cells), Formulas: sh.FormulaN, Slim: slim,
+			Name: ws.Name, Dimension: sh.Dimension, Cells: len(sh.Cells), Formulas: sh.FormulaN, Slim: slim, State: ws.State,
 		})
 		fmt.Fprintf(os.Stderr, "  sheet %-22s cells=%-7d formulas=%-6d%s\n",
 			ws.Name, len(sh.Cells), sh.FormulaN, slimNote(slim))
 	}
 
-	if err := writeDefinedNames(filepath.Join(outDir, "defined_names.tsv"), extractDefinedNames(xl)); err != nil {
+	if err := writeDefinedNames(filepath.Join(outDir, "defined_names.tsv"), wb.DefinedNames); err != nil {
+		return err
+	}
+	counts, err := ex.write(outDir)
+	if err != nil {
 		return err
 	}
 
@@ -280,6 +303,7 @@ func run(src, outDir, sheetsCSV string, maxCells int, noVBA, noGrid, force bool)
 		Sheets:      sheetManifests,
 		VBAModules:  modManifests,
 		Objects:     objects,
+		Counts:      counts,
 	}
 	if err := writeManifest(filepath.Join(outDir, "manifest.json"), man); err != nil {
 		return err
@@ -382,6 +406,21 @@ func prepareOutDir(dir string, force bool) error {
 		}
 	}
 	return os.MkdirAll(dir, 0o755)
+}
+
+// isOLE2 reports whether the file starts with the OLE2 (CFB) signature: what an encrypted .xlsx/.xlsm or a legacy .xls
+// is stored in.
+func isOLE2(path string) bool {
+	f, err := os.Open(path)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	var sig [8]byte
+	if _, err := io.ReadFull(f, sig[:]); err != nil {
+		return false
+	}
+	return sig == [8]byte{0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1}
 }
 
 func fileSHA256(path string) string {

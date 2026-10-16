@@ -34,31 +34,15 @@ func extractObjects(zr *zip.Reader, sheets []wbSheet, only map[string]bool) []Dr
 	return out
 }
 
-// sheetDrawingRels resolves the drawing and vmlDrawing targets referenced by one
-// worksheet, via its .rels file. Targets are returned as full zip paths.
+// sheetDrawingRels returns the drawing and vmlDrawing parts referenced by one worksheet, as zip paths.
 func sheetDrawingRels(zr *zip.Reader, wsTarget string) (drawings, vmls []string) {
-	dir := path.Dir(wsTarget)
-	relsPath := dir + "/_rels/" + path.Base(wsTarget) + ".rels"
-	f := openZip(zr, relsPath)
-	if f == nil {
-		return nil, nil
-	}
-	defer func() { _ = f.Close() }()
-	var rels struct {
-		Rel []struct {
-			Type   string `xml:"Type,attr"`
-			Target string `xml:"Target,attr"`
-		} `xml:"Relationship"`
-	}
-	if xml.NewDecoder(f).Decode(&rels) != nil {
-		return nil, nil
-	}
-	for _, r := range rels.Rel {
+	for _, r := range sheetRels(zr, wsTarget) {
 		switch {
+		case r.External:
 		case strings.HasSuffix(r.Type, "/drawing"):
-			drawings = append(drawings, resolveRelTarget(dir, r.Target))
+			drawings = append(drawings, r.Target)
 		case strings.HasSuffix(r.Type, "/vmlDrawing"):
-			vmls = append(vmls, resolveRelTarget(dir, r.Target))
+			vmls = append(vmls, r.Target)
 		}
 	}
 	return drawings, vmls

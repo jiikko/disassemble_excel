@@ -1,0 +1,4 @@
+table	sheet	ref	column	calculated_formula
+Lines	Data	A1:C5	単価	
+Lines	Data	A1:C5	数量	
+Lines	Data	A1:C5	小計	Lines[[#This Row],[単価]]*Lines[[#This Row],[数量]]

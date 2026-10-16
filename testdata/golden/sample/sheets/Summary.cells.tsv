@@ -17,3 +17,5 @@ A8	s		エラー
 B8	str	=1/0	
 A9	s		名前付き範囲
 B9	str	=TaxRate*B2	
+A10	s		エスケープ
+B10	s		CR\rLF and literal _x0041_

@@ -34,13 +34,35 @@ func sanitizeFilename(name string) string {
 	return out
 }
 
-// tsvEsc keeps one cell on one line: tabs/newlines/backslashes are escaped.
+// tsvEsc keeps one cell on one line: tabs/newlines/backslashes are escaped, other control characters too.
 func tsvEsc(s string) string {
 	s = strings.ReplaceAll(s, "\\", "\\\\")
 	s = strings.ReplaceAll(s, "\t", "\\t")
 	s = strings.ReplaceAll(s, "\r", "\\r")
 	s = strings.ReplaceAll(s, "\n", "\\n")
-	return s
+	return escapeControls(s)
+}
+
+// escapeControls writes C0 control characters other than tab / LF / CR (and DEL) as \xHH. A cell can hold them
+// (_x0000_ in the XML decodes to NUL), and a single NUL makes grep and git treat the whole file as binary.
+// Callers escape backslash first where the result must stay unambiguous (tsvEsc).
+func escapeControls(s string) string {
+	if strings.IndexFunc(s, isEscapedControl) < 0 {
+		return s
+	}
+	var b strings.Builder
+	for _, r := range s {
+		if isEscapedControl(r) {
+			fmt.Fprintf(&b, "\\x%02X", r)
+			continue
+		}
+		b.WriteRune(r)
+	}
+	return b.String()
+}
+
+func isEscapedControl(r rune) bool {
+	return (r < 0x20 && r != '\t' && r != '\n' && r != '\r') || r == 0x7F
 }
 
 func formulaField(c Cell) string {
@@ -116,7 +138,7 @@ func writeValuesCSV(path string, sh *Sheet) error {
 	}
 	grid := make(map[[2]int]string, len(sh.Cells))
 	for _, c := range sh.Cells {
-		grid[[2]int{c.Row, c.Col}] = c.Value
+		grid[[2]int{c.Row, c.Col}] = escapeControls(c.Value) // CSV quoting handles tab / LF / CR, not NUL
 	}
 
 	fp, err := os.Create(path)
@@ -153,18 +175,29 @@ func writeValuesCSV(path string, sh *Sheet) error {
 	return fp.Close()
 }
 
-func writeDefinedNames(path string, names []DefinedName) error {
+// writeTSV writes a header and rows; every field is escaped so one record stays on one line.
+func writeTSV(path string, header []string, rows [][]string) error {
 	var b strings.Builder
-	b.WriteString("name\tscope\trefers_to\n")
-	for _, n := range names {
-		b.WriteString(tsvEsc(n.Name))
-		b.WriteByte('\t')
-		b.WriteString(tsvEsc(n.Scope))
-		b.WriteByte('\t')
-		b.WriteString(tsvEsc(n.RefersTo))
+	b.WriteString(strings.Join(header, "\t"))
+	b.WriteByte('\n')
+	for _, r := range rows {
+		for i, f := range r {
+			if i > 0 {
+				b.WriteByte('\t')
+			}
+			b.WriteString(tsvEsc(f))
+		}
 		b.WriteByte('\n')
 	}
 	return os.WriteFile(path, []byte(b.String()), 0o644)
+}
+
+func writeDefinedNames(path string, names []DefinedName) error {
+	rows := make([][]string, 0, len(names))
+	for _, n := range names {
+		rows = append(rows, []string{n.Name, n.Scope, n.RefersTo, boolField(n.Hidden)})
+	}
+	return writeTSV(path, []string{"name", "scope", "refers_to", "hidden"}, rows)
 }
 
 func writeModule(dir string, m Module) error {
@@ -185,21 +218,11 @@ func writeVBAIndex(path string, mods []Module) error {
 // writeObjectsTSV writes one line per sheet object that has a macro assigned,
 // so "what runs when this picture/button is clicked" is diffable and greppable.
 func writeObjectsTSV(path string, objs []DrawingObject) error {
-	var b strings.Builder
-	b.WriteString("sheet\tobject\tkind\tanchor\tmacro\n")
+	rows := make([][]string, 0, len(objs))
 	for _, o := range objs {
-		b.WriteString(tsvEsc(o.Sheet))
-		b.WriteByte('\t')
-		b.WriteString(tsvEsc(o.Name))
-		b.WriteByte('\t')
-		b.WriteString(o.Kind)
-		b.WriteByte('\t')
-		b.WriteString(o.Anchor)
-		b.WriteByte('\t')
-		b.WriteString(tsvEsc(o.Macro))
-		b.WriteByte('\n')
+		rows = append(rows, []string{o.Sheet, o.Name, o.Kind, o.Anchor, o.Macro})
 	}
-	return os.WriteFile(path, []byte(b.String()), 0o644)
+	return writeTSV(path, []string{"sheet", "object", "kind", "anchor", "macro"}, rows)
 }
 
 func writeManifest(path string, man Manifest) error {
@@ -245,9 +268,9 @@ func writeReadme(path string, man Manifest, srcAbs string, noGrid bool) error {
 	b.WriteString("## ファイル構成と各ファイルの意味\n\n")
 	b.WriteString("| パス | 内容 |\n")
 	b.WriteString("|------|------|\n")
-	b.WriteString("| `manifest.json` | 機械可読の目録。元ファイル名・SHA-256・抽出日時・ツールバージョン、シートごとの寸法/セル数/数式数、VBA モジュール一覧を持つ |\n")
+	b.WriteString("| `manifest.json` | 機械可読の目録。元ファイル名・SHA-256・抽出日時・ツールバージョン、シートごとの状態 (visible / hidden / veryHidden)・寸法・セル数・数式数、VBA モジュール一覧、下の TSV の件数 (counts) を持つ |\n")
 	b.WriteString("| `README.md` | このファイル（出力の説明・元ソース・各ファイルの意味） |\n")
-	b.WriteString("| `defined_names.tsv` | 定義名（名前付き範囲・LAMBDA 引数）。列は `name  scope  refers_to` |\n")
+	b.WriteString("| `defined_names.tsv` | 定義名（名前付き範囲・LAMBDA 引数）。列は `name  scope  refers_to  hidden`（hidden は隠し名なら 1） |\n")
 	b.WriteString("| `sheets/<シート名>.cells.tsv` | シートの全セルを 1 セル 1 行で。列は `cell  type  formula  value`、(行,列) でソート・空セルは省略。値中のタブ/改行は `\\t` `\\n` にエスケープ |\n")
 	if !noGrid {
 		b.WriteString("| `sheets/<シート名>.values.csv` | キャッシュ値だけをグリッド（行×列）に並べた目視確認用ビュー |\n")
@@ -259,6 +282,20 @@ func writeReadme(path string, man Manifest, srcAbs string, noGrid bool) error {
 		b.WriteString("| `vba/<モジュール名>.bas` / `.cls` | VBA モジュールのソースコード（標準モジュール=`.bas`、クラス/ドキュメントモジュール=`.cls`）。コードを持つモジュールごとに 1 ファイル |\n")
 		b.WriteString("| `vba_index.tsv` | VBA の Sub/Function/Property の索引。列は `module  proc  kind  module_line` |\n")
 	}
+	for _, f := range []struct {
+		n    int
+		path string
+		desc string
+	}{
+		{man.Counts.DataValidations, "data_validations.tsv", "データの入力規則（入力できる値の制約・リストの出どころ）。列は `sheet  sqref  type  operator  formula1  formula2  allow_blank`。数式は先頭の = なし"},
+		{man.Counts.Hyperlinks, "hyperlinks.tsv", "ハイパーリンク。列は `sheet  cell  target  location  display`（target は外部、location はブック内の飛び先）"},
+		{man.Counts.TableColumns, "tables.tsv", "テーブル（構造化参照 `Table1[列]` の名前）の範囲と列。1 列 1 行。列は `table  sheet  ref  column  calculated_formula`"},
+		{man.Counts.Comments, "comments.tsv", "セルのコメント（メモ）。列は `sheet  cell  author  text`"},
+	} {
+		if f.n > 0 {
+			fmt.Fprintf(&b, "| `%s` | %s |\n", f.path, f.desc)
+		}
+	}
 	if hasObjects {
 		b.WriteString("| `objects.tsv` | マクロが割り当てられたシート上のオブジェクト（画像・図形・ボタン）。クリック時に実行されるマクロが分かる。列は `sheet  object  kind  anchor  macro`。画像自体は復元しない |\n")
 	}
@@ -268,15 +305,15 @@ func writeReadme(path string, man Manifest, srcAbs string, noGrid bool) error {
 	if len(man.Sheets) == 0 {
 		b.WriteString("（抽出されたシートはありません）\n\n")
 	} else {
-		b.WriteString("| シート | 範囲 | セル数 | 数式数 | ファイル |\n")
-		b.WriteString("|--------|------|-------:|-------:|----------|\n")
+		b.WriteString("| シート | 状態 | 範囲 | セル数 | 数式数 | ファイル |\n")
+		b.WriteString("|--------|------|------|-------:|-------:|----------|\n")
 		for _, s := range man.Sheets {
 			file := "sheets/" + sanitizeFilename(s.Name) + ".cells.tsv"
 			if s.Slim {
 				file += " (+slim)"
 			}
-			fmt.Fprintf(&b, "| %s | %s | %d | %d | `%s` |\n",
-				s.Name, s.Dimension, s.Cells, s.Formulas, file)
+			fmt.Fprintf(&b, "| %s | %s | %s | %d | %d | `%s` |\n",
+				s.Name, s.State, s.Dimension, s.Cells, s.Formulas, file)
 		}
 		b.WriteString("\n")
 	}

@@ -5,8 +5,9 @@ Excel ワークブック（`.xlsx` / `.xlsm` / `.xlsb`）を、diff しやすい
 **と**キャッシュ値の両方）、定義名、VBA マクロのソース（モジュールごとに 1 ファイル）
 として書き出す。
 
-バージョン管理上でスプレッドシートのロジックを読み・**diff** するため、そして
-数式＋マクロを持つ重い Excel モデルを実コードへ移植するために作られた。
+Excel を解体して、プログラムのソースと同じように読み・**diff** できるようにするための
+ツール。抽出するのはロジックと作り手の意図（数式・定義名・VBA・
+入力規則・テーブル・コメント・隠しシート）で、見た目（書式・結合・条件付き書式）は扱わない。
 
 ## なぜ
 
@@ -35,7 +36,17 @@ Excel ワークブック（`.xlsx` / `.xlsm` / `.xlsb`）を、diff しやすい
   （セル数のしきい値を超えたシート向け）。
 - VBA → `vba/<module>.bas` / `.cls`、モジュールごとに 1 ファイル、加えて
   `vba_index.tsv`（module / proc / kind / line）で各 `Sub`/`Function` へ辿れる。
-- 定義名（名前付き範囲・LAMBDA 引数）→ `defined_names.tsv`。
+- 定義名（名前付き範囲・LAMBDA 引数）→ `defined_names.tsv`。隠し名は `hidden` 列で分かる。
+- シートの表示状態（`visible` / `hidden` / `veryHidden`）→ `manifest.json`。veryHidden は
+  Excel の画面からは再表示できないシートで、ロジックの置き場に使われることがある。
+- データの入力規則 → `data_validations.tsv`（Excel 2010 以降の拡張形式 x14 で保存された、
+  別シートを参照するリストも含む）。
+- テーブル → `tables.tsv` — 範囲と列名、計算列の数式。`Sales[Amount]` のような構造化参照を
+  範囲に戻せる。
+- セルのコメント（メモ）→ `comments.tsv`、ハイパーリンク → `hyperlinks.tsv`。
+- 共有文字列・インライン文字列の `_x000D_` のようなエスケープ（XML に書けない文字の表現）は
+  元の文字に戻す。タブ・改行・CR 以外の制御文字は `\x00` の形で書き、grep や git が
+  ファイルをバイナリ扱いしないようにする。
 - マクロ割り当てオブジェクト → `objects.tsv` — シート上の画像・図形・ボタンに登録され、
   クリック時に実行されるマクロ。列は `sheet  object  kind  anchor  macro`。
   画像自体（見た目）は復元しないが、「クリックで何が走るか」は分かる。
@@ -93,7 +104,7 @@ for f in *.xlsm; do disassemble_excel "$f" -o "out/${f%.xlsm}" -f; done
 <out>/
   README.md                      # 来歴: 元ファイルのパス・SHA-256・各ファイルの意味
   manifest.json
-  defined_names.tsv              # name  scope  refers_to
+  defined_names.tsv              # name  scope  refers_to  hidden
   sheets/
     Summary.cells.tsv            # cell  type  formula  value   （1 セル 1 行）
     Summary.values.csv           # キャッシュ値のグリッド
@@ -106,6 +117,11 @@ for f in *.xlsm; do disassemble_excel "$f" -o "out/${f%.xlsm}" -f; done
     ThisWorkbook.cls             # クラス/ドキュメントモジュール
   vba_index.tsv                  # module  proc  kind  module_line
   objects.tsv                    # sheet  object  kind  anchor  macro（マクロ割り当てオブジェクト）
+  data_validations.tsv           # sheet  sqref  type  operator  formula1  formula2  allow_blank
+  tables.tsv                     # table  sheet  ref  column  calculated_formula
+  comments.tsv                   # sheet  cell  author  text
+  hyperlinks.tsv                 # sheet  cell  target  location  display
+                                 # objects.tsv 以下は該当が 1 件以上あるときだけ出る
 ```
 
 `cells.tsv` の例:
@@ -154,14 +170,24 @@ value はワークブックに保存されたキャッシュ値。値の中の�
 
 - 数式は**抽出するだけで評価（再計算）はしない**。ツールは数式テキストと Excel が
   最後にキャッシュした値を報告するだけで、何も再計算しない。
-- 書式・チャート・ピボットテーブル・条件付き書式、および画像・図形の見た目（ピクセルや
-  描画）は抽出しない（焦点はプレゼンテーションではなくロジック）。ただし画像・図形・ボタンに
+- 書式（表示形式を含む）・結合セル・条件付き書式・チャート・ピボットテーブル、および
+  画像・図形の見た目（ピクセルや描画）は抽出しない（焦点はプレゼンテーションではなくロジック）。ただし画像・図形・ボタンに
   **割り当てられたマクロ**は `objects.tsv` に抽出する（クリック時に実行されるマクロ）。
 - グループ化された図形（`grpSp`）の内部にある子オブジェクトに個別にマクロが割り当てられて
   いる場合は拾わない（グループ自体に割り当てられたマクロは拾う）。フォームコントロールの
   ボタン（VML）は仕様準拠で実装しているが、実ファイルでの検証は未実施。
-- ワークブックはメモリに読み込む。~70 MB のマクロ付きワークブックでおよそ 1 GB の
-  RAM を要し、数秒で処理する。
+- 各パーツは zip から直接読み、シートは 1 回の走査で処理する。excelize でブック全体も
+  開いていた以前の版は、~70 MB のマクロ付きワークブックでおよそ 1 GB の RAM を要した。
+  excelize を外した今の版のメモリ使用量は未実測（大きなワークブックで測ったらここを更新する）。
+- パスワードで暗号化されたブックと旧形式の `.xls` は読めない（rc=1 で、その旨を表示する）。
+- `values.csv` は目視用のビュー。制御文字は `\x00` の形にするが、バックスラッシュは
+  エスケープしないので、文字どおりの `\x00` とは区別できない。正確な値は `cells.tsv` を見る。
+- シートや共有文字列の XML が途中で壊れている・実体が無いときは、途中までを出さずに rc=1 で終わる
+  （diff でセルが消えたように見えるのを避けるため）。
+- Strict Open XML 形式（名前空間が purl.oclc.org のもの）は未対応で、rc=1 で終わる
+  （Excel で通常の「Excel ブック (.xlsx)」として保存し直せば読める）。
+- スレッド形式のコメント（Excel 365 の返信付きコメント）は、Excel が併せて保存する旧形式の
+  メモ（`[Threaded comment]` で始まる）として出る。返信の構造は出さない。
 
 ## 開発
 

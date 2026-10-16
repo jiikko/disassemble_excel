@@ -19,6 +19,7 @@ type Sheet struct {
 	Cells     []Cell
 	FormulaN  int
 	ValueN    int
+	Parts     sheetParts // data validations, hyperlinks, tables (sheetextras.go)
 }
 
 // Module is one VBA module extracted from vbaProject.bin.
@@ -61,6 +62,14 @@ type Manifest struct {
 	Sheets      []SheetManifest `json:"sheets"`
 	VBAModules  []ModManifest   `json:"vba_modules"`
 	Objects     []DrawingObject `json:"objects,omitempty"` // sheet objects with an assigned macro
+	Counts      Counts          `json:"counts"`            // rows of the sheet-part TSVs (a file is written only when > 0)
+}
+
+type Counts struct {
+	DataValidations int `json:"data_validations"`
+	Hyperlinks      int `json:"hyperlinks"`
+	TableColumns    int `json:"table_columns"`
+	Comments        int `json:"comments"`
 }
 
 type SheetManifest struct {
@@ -68,7 +77,8 @@ type SheetManifest struct {
 	Dimension string `json:"dimension"`
 	Cells     int    `json:"cells"`
 	Formulas  int    `json:"formulas"`
-	Slim      bool   `json:"slim"` // a .slim.tsv was also written
+	Slim      bool   `json:"slim"`  // a .slim.tsv was also written
+	State     string `json:"state"` // visible | hidden | veryHidden
 }
 
 type ModManifest struct {

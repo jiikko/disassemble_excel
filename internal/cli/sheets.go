@@ -3,10 +3,13 @@ package cli
 import (
 	"archive/zip"
 	"encoding/xml"
+	"fmt"
 	"io"
 	"sort"
 	"strconv"
 	"strings"
+	"unicode"
+	"unicode/utf16"
 )
 
 // --- A1 <-> (row, col) helpers ---
@@ -49,90 +52,94 @@ type siRunXML struct {
 	T string `xml:"t"`
 }
 
-func (s siXML) text() string {
-	if len(s.R) > 0 {
-		var b strings.Builder
-		for _, r := range s.R {
-			b.WriteString(r.T)
-		}
-		return b.String()
+func (s siXML) text() string { return richText(s.T, s.R) }
+
+// richText joins a CT_Rst: an optional plain <t> followed by rich-text runs (both may appear; excelize joins them too).
+// Phonetic runs (<rPh>) are not part of the text.
+func richText(t string, runs []siRunXML) string {
+	var b strings.Builder
+	b.WriteString(t)
+	for _, r := range runs {
+		b.WriteString(r.T)
 	}
-	return s.T
+	return unescapeOOXML(b.String())
 }
 
-func parseSharedStrings(zr *zip.Reader) []string {
+// unescapeOOXML decodes the _xHHHH_ escapes of an ST_Xstring (ECMA-376 Part 1 §22.9.2.19): characters XML 1.0 cannot
+// carry (CR, control characters) are stored as _x000D_ etc., and a literal "_x" sequence is protected as _x005F_x....
+// Same rule as excelize's bstrUnmarshal, except that a UTF-16 surrogate pair (_xD83D__xDE00_) becomes one character.
+// Applied to shared and inline strings (CT_Rst) after joining the runs, as excelize does; the cached value of a
+// formula string (t="str") is left as stored, also as excelize does. Control characters it yields are escaped by the
+// writers (escapeControls), not here.
+func unescapeOOXML(s string) string {
+	if !strings.Contains(s, "_x") {
+		return s
+	}
+	var b strings.Builder
+	for i := 0; i < len(s); {
+		if r, ok := escapedUnit(s, i); ok {
+			if r == '_' { // _x005F_ escapes the underscore of a literal "_xHHHH_"
+				b.WriteByte('_')
+				i += 7
+				continue
+			}
+			if utf16.IsSurrogate(r) {
+				if r2, ok2 := escapedUnit(s, i+7); ok2 {
+					if pair := utf16.DecodeRune(r, r2); pair != unicode.ReplacementChar {
+						b.WriteRune(pair)
+						i += 14
+						continue
+					}
+				}
+			}
+			b.WriteRune(r)
+			i += 7
+			continue
+		}
+		b.WriteByte(s[i])
+		i++
+	}
+	return b.String()
+}
+
+// escapedUnit reads one _xHHHH_ at s[i:].
+func escapedUnit(s string, i int) (rune, bool) {
+	if i+7 > len(s) || s[i] != '_' || s[i+1] != 'x' || s[i+6] != '_' {
+		return 0, false
+	}
+	n, err := strconv.ParseUint(s[i+2:i+6], 16, 16)
+	if err != nil {
+		return 0, false
+	}
+	return rune(n), true
+}
+
+// parseSharedStrings reads xl/sharedStrings.xml. A workbook without strings has no such part; a part that breaks off
+// midway is an error, because every later string index would silently resolve to "".
+func parseSharedStrings(zr *zip.Reader) ([]string, error) {
 	f := openZip(zr, "xl/sharedStrings.xml")
 	if f == nil {
-		return nil
+		return nil, nil
 	}
 	defer func() { _ = f.Close() }()
 	dec := xml.NewDecoder(f)
 	var out []string
 	for {
 		tok, err := dec.Token()
+		if err == io.EOF {
+			return out, nil
+		}
 		if err != nil {
-			break
+			return nil, fmt.Errorf("xl/sharedStrings.xml を読めない: %w", err)
 		}
 		if se, ok := tok.(xml.StartElement); ok && se.Name.Local == "si" {
 			var si siXML
-			if dec.DecodeElement(&si, &se) == nil {
-				out = append(out, si.text())
+			if err := dec.DecodeElement(&si, &se); err != nil {
+				return nil, fmt.Errorf("xl/sharedStrings.xml を読めない: %w", err)
 			}
+			out = append(out, si.text())
 		}
 	}
-	return out
-}
-
-// --- workbook sheet list (name -> worksheet target path) ---
-
-type wbSheet struct {
-	Name   string
-	Target string // e.g. "xl/worksheets/sheet3.xml"
-}
-
-func parseWorkbookSheets(zr *zip.Reader) []wbSheet {
-	type sheetEl struct {
-		Name string `xml:"name,attr"`
-		RID  string `xml:"http://schemas.openxmlformats.org/officeDocument/2006/relationships id,attr"`
-	}
-	type relEl struct {
-		ID     string `xml:"Id,attr"`
-		Target string `xml:"Target,attr"`
-	}
-	var wb struct {
-		Sheets []sheetEl `xml:"sheets>sheet"`
-	}
-	if f := openZip(zr, "xl/workbook.xml"); f != nil {
-		// 欠損/壊れた XML は best-effort (ゼロ値のまま続行し、参照側が空を扱う)
-		_ = xml.NewDecoder(f).Decode(&wb)
-		_ = f.Close()
-	}
-	var rels struct {
-		Rel []relEl `xml:"Relationship"`
-	}
-	if f := openZip(zr, "xl/_rels/workbook.xml.rels"); f != nil {
-		// 欠損/壊れた XML は best-effort (ゼロ値のまま続行し、参照側が空を扱う)
-		_ = xml.NewDecoder(f).Decode(&rels)
-		_ = f.Close()
-	}
-	ridTarget := map[string]string{}
-	for _, r := range rels.Rel {
-		ridTarget[r.ID] = r.Target
-	}
-	var out []wbSheet
-	for _, s := range wb.Sheets {
-		t := ridTarget[s.RID]
-		if t == "" {
-			continue
-		}
-		if !strings.HasPrefix(t, "/") {
-			t = "xl/" + t
-		} else {
-			t = strings.TrimPrefix(t, "/")
-		}
-		out = append(out, wbSheet{Name: s.Name, Target: t})
-	}
-	return out
 }
 
 // --- worksheet cell parsing ---
@@ -159,31 +166,29 @@ func (is *isXML) text() string {
 	if is == nil {
 		return ""
 	}
-	if len(is.R) > 0 {
-		var b strings.Builder
-		for _, r := range is.R {
-			b.WriteString(r.T)
-		}
-		return b.String()
-	}
-	return is.T
+	return richText(is.T, is.R)
 }
 
 // extractSheet parses one worksheet XML and expands shared-formula children from their master cell.
-func extractSheet(zr *zip.Reader, target, name string, shared []string) *Sheet {
+// A missing or truncated sheet part is an error: emitting nothing or a partial sheet would read as deleted cells in a diff.
+func extractSheet(zr *zip.Reader, target, name string, shared []string) (*Sheet, error) {
 	f := openZip(zr, target)
 	if f == nil {
-		return nil
+		return nil, fmt.Errorf("シート %q の実体 %s が zip に無い", name, target)
 	}
 	defer func() { _ = f.Close() }()
 
 	sh := &Sheet{Name: name}
+	parts := &sh.Parts
 	masters := map[string]sharedMaster{}
 	dec := xml.NewDecoder(f)
 	for {
 		tok, err := dec.Token()
-		if err != nil {
+		if err == io.EOF {
 			break
+		}
+		if err != nil {
+			return nil, fmt.Errorf("シート %q (%s) を読めない: %w", name, target, err)
 		}
 		se, ok := tok.(xml.StartElement)
 		if !ok {
@@ -198,7 +203,10 @@ func extractSheet(zr *zip.Reader, target, name string, shared []string) *Sheet {
 			}
 		case "c":
 			var c cXML
-			if dec.DecodeElement(&c, &se) != nil || c.R == "" {
+			if err := dec.DecodeElement(&c, &se); err != nil {
+				return nil, fmt.Errorf("シート %q (%s) を読めない: %w", name, target, err)
+			}
+			if c.R == "" {
 				continue
 			}
 			cell := buildCell(c, shared)
@@ -209,6 +217,8 @@ func extractSheet(zr *zip.Reader, target, name string, shared []string) *Sheet {
 				masters[c.F.SI] = newSharedMaster(cell.Formula, cell.Row, cell.Col, c.F.Ref)
 			}
 			sh.Cells = append(sh.Cells, *cell)
+		default:
+			parts.handle(dec, se)
 		}
 	}
 
@@ -235,7 +245,7 @@ func extractSheet(zr *zip.Reader, target, name string, shared []string) *Sheet {
 			sh.ValueN++
 		}
 	}
-	return sh
+	return sh, nil
 }
 
 func buildCell(c cXML, shared []string) *Cell {

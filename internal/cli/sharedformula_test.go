@@ -52,9 +52,9 @@ func TestExtractSheetExpandsSharedFormula(t *testing.T) {
 <row r="5"><c r="E5"><f t="shared" ref="A1:F9" si="">Z1</f><v>7</v></c></row>
 </sheetData></worksheet>`
 	zr := zipReaderFrom(t, map[string]string{"xl/worksheets/sheet1.xml": sheet})
-	sh := extractSheet(zr, "xl/worksheets/sheet1.xml", "S", nil)
-	if sh == nil {
-		t.Fatal("extractSheet returned nil")
+	sh, err := extractSheet(zr, "xl/worksheets/sheet1.xml", "S", nil)
+	if err != nil {
+		t.Fatal(err)
 	}
 	want := map[string]string{
 		"B1": "Inputs!A1+A1+$A$1",

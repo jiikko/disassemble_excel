@@ -1,22 +1,32 @@
 {
   "source": "sample.xlsm",
-  "sha256": "02493d586d994785a0369b8477f86deef9c094555ea6c72f4edf88ca8558d0d4",
+  "sha256": "6a263a539897aff3f857689c65adf937ae8ef54364414f992f054f2244cdc0cb",
   "extracted_at": "<EXTRACTED_AT>",
   "tool_version": "0.1.0",
   "sheets": [
     {
       "name": "Summary",
       "dimension": "A1",
-      "cells": 18,
+      "cells": 20,
       "formulas": 3,
-      "slim": false
+      "slim": false,
+      "state": "visible"
     },
     {
       "name": "Data",
       "dimension": "A1",
       "cells": 20,
       "formulas": 8,
-      "slim": false
+      "slim": false,
+      "state": "visible"
+    },
+    {
+      "name": "Lists",
+      "dimension": "A1",
+      "cells": 3,
+      "formulas": 0,
+      "slim": false,
+      "state": "veryHidden"
     }
   ],
   "vba_modules": [
@@ -66,5 +76,11 @@
       "anchor": "D6",
       "macro": "Button2_Click"
     }
-  ]
+  ],
+  "counts": {
+    "data_validations": 2,
+    "hyperlinks": 1,
+    "table_columns": 3,
+    "comments": 1
+  }
 }
