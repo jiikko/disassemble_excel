@@ -1,6 +1,6 @@
 {
   "source": "sample.xlsm",
-  "sha256": "f7b0f0b8b4f57440162153b62a842985a45bd846eee70203d4932148400c8c4b",
+  "sha256": "02493d586d994785a0369b8477f86deef9c094555ea6c72f4edf88ca8558d0d4",
   "extracted_at": "<EXTRACTED_AT>",
   "tool_version": "0.1.0",
   "sheets": [
@@ -14,8 +14,8 @@
     {
       "name": "Data",
       "dimension": "A1",
-      "cells": 15,
-      "formulas": 4,
+      "cells": 20,
+      "formulas": 8,
       "slim": false
     }
   ],

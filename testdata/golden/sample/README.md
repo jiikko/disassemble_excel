@@ -11,7 +11,7 @@ Excel を開かずに、シートのセル数式・キャッシュ値・定義�
 | 生成ツール | disassemble_excel v0.1.0 (https://github.com/jiikko/disassemble_excel) |
 | 元 Excel ファイル（絶対パス） | `<ABS_PATH>` |
 | 元 Excel ファイル名 | `sample.xlsm` |
-| 元ファイルの SHA-256 | `f7b0f0b8b4f57440162153b62a842985a45bd846eee70203d4932148400c8c4b` |
+| 元ファイルの SHA-256 | `02493d586d994785a0369b8477f86deef9c094555ea6c72f4edf88ca8558d0d4` |
 | 抽出日時 | <EXTRACTED_AT> |
 
 > 数式は **抽出のみで、評価（再計算）はしていません**。各セルの `value` 列は Excel が
@@ -35,7 +35,7 @@ Excel を開かずに、シートのセル数式・キャッシュ値・定義�
 | シート | 範囲 | セル数 | 数式数 | ファイル |
 |--------|------|-------:|-------:|----------|
 | Summary | A1 | 18 | 3 | `sheets/Summary.cells.tsv` |
-| Data | A1 | 15 | 4 | `sheets/Data.cells.tsv` |
+| Data | A1 | 20 | 8 | `sheets/Data.cells.tsv` |
 
 ## VBA モジュール一覧（4 個）
 

@@ -7,8 +7,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-
-	"github.com/xuri/excelize/v2"
 )
 
 // --- A1 <-> (row, col) helpers ---
@@ -148,6 +146,7 @@ type cXML struct {
 }
 type fXML struct {
 	T       string `xml:"t,attr"`
+	SI      string `xml:"si,attr"`
 	Content string `xml:",chardata"`
 }
 type isXML struct {
@@ -169,8 +168,8 @@ func (is *isXML) text() string {
 	return is.T
 }
 
-// extractSheet parses one worksheet XML and resolves shared/array formulas via xl.
-func extractSheet(zr *zip.Reader, target, name string, shared []string, xl *excelize.File) *Sheet {
+// extractSheet parses one worksheet XML and expands shared-formula children from their master cell.
+func extractSheet(zr *zip.Reader, target, name string, shared []string) *Sheet {
 	f := openZip(zr, target)
 	if f == nil {
 		return nil
@@ -178,6 +177,7 @@ func extractSheet(zr *zip.Reader, target, name string, shared []string, xl *exce
 	defer func() { _ = f.Close() }()
 
 	sh := &Sheet{Name: name}
+	masters := map[string]sharedMaster{}
 	dec := xml.NewDecoder(f)
 	for {
 		tok, err := dec.Token()
@@ -204,16 +204,19 @@ func extractSheet(zr *zip.Reader, target, name string, shared []string, xl *exce
 			if cell == nil {
 				continue
 			}
+			if c.F != nil && c.F.T == "shared" && cell.Formula != "" {
+				masters[c.F.SI] = sharedMaster{formula: cell.Formula, row: cell.Row, col: cell.Col}
+			}
 			sh.Cells = append(sh.Cells, *cell)
 		}
 	}
 
-	// Expand shared-formula children (their formula text is empty in the XML).
+	// Expand shared-formula children (their formula text is empty in the XML). Done after the whole sheet is read so
+	// the result does not depend on the master appearing first. A child whose master is missing keeps an empty formula.
 	for i := range sh.Cells {
-		if sh.Cells[i].needExpand {
-			if fm, err := xl.GetCellFormula(name, sh.Cells[i].Addr); err == nil {
-				sh.Cells[i].Formula = fm
-			}
+		c := &sh.Cells[i]
+		if m, ok := masters[c.sharedSI]; ok && c.needExpand {
+			c.Formula = shiftFormula(m.formula, c.Row-m.row, c.Col-m.col)
 		}
 	}
 
@@ -253,11 +256,12 @@ func buildCell(c cXML, shared []string) *Cell {
 
 	formula := ""
 	needExpand := false
+	sharedSI := ""
 	if c.F != nil {
 		if strings.TrimSpace(c.F.Content) != "" {
 			formula = c.F.Content
 		} else if c.F.T == "shared" {
-			needExpand = true
+			needExpand, sharedSI = true, c.F.SI
 		}
 	}
 
@@ -268,7 +272,7 @@ func buildCell(c cXML, shared []string) *Cell {
 	if typ == "" {
 		typ = "n"
 	}
-	return &Cell{Row: row, Col: col, Addr: c.R, Type: typ, Formula: formula, Value: value, needExpand: needExpand}
+	return &Cell{Row: row, Col: col, Addr: c.R, Type: typ, Formula: formula, Value: value, needExpand: needExpand, sharedSI: sharedSI}
 }
 
 func openZip(zr *zip.Reader, name string) io.ReadCloser {

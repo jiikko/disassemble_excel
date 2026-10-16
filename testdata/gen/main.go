@@ -58,6 +58,10 @@ func main() {
 	}
 	shared, ref := excelize.STCellFormulaTypeShared, "C2:C5"
 	must(f.SetCellFormula("Data", "C2", "A2*B2", excelize.FormulaOpts{Type: &shared, Ref: &ref}))
+	// A shared formula with sheet-qualified references: children must move Summary!B2 too (issue #2).
+	must(f.SetCellValue("Data", "D1", "別シート参照"))
+	ref2 := "D2:D5"
+	must(f.SetCellFormula("Data", "D2", "Summary!B2+'Summary'!$B$2+C2", excelize.FormulaOpts{Type: &shared, Ref: &ref2}))
 
 	must(f.SetDefinedName(&excelize.DefinedName{Name: "TaxRate", RefersTo: "0.1"}))
 	must(f.SetDefinedName(&excelize.DefinedName{Name: "Items", RefersTo: "Data!$A$2:$C$5", Scope: "Data"}))

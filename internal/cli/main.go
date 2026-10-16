@@ -207,7 +207,7 @@ func run(src, outDir, sheetsCSV string, maxCells int, noVBA, noGrid, force bool)
 		if only != nil && !only[ws.Name] {
 			continue
 		}
-		sh := extractSheet(&zr.Reader, ws.Target, ws.Name, shared, xl)
+		sh := extractSheet(&zr.Reader, ws.Target, ws.Name, shared)
 		if sh == nil {
 			continue
 		}

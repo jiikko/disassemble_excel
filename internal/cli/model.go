@@ -8,7 +8,8 @@ type Cell struct {
 	Formula  string // without leading '=' ("" if none)
 	Value    string // cached value (shared strings already resolved)
 
-	needExpand bool // shared-formula child whose formula must be expanded via excelize
+	needExpand bool   // shared-formula child whose formula is taken from its master (sharedformula.go)
+	sharedSI   string // si of that shared-formula group
 }
 
 // Sheet holds the extracted cells of one worksheet.
