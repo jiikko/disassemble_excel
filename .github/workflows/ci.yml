@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version-file: .github/go-version # CI の Go の版の正本 (go.mod の go 行は最小の版で、別に持つ)
+          go-version-file: .go-version # CI の Go の版の正本 (go.mod の go 行は最小の版で、別に持つ)
       - run: make lint
 
   test:
@@ -32,5 +32,5 @@ jobs:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v7
         with:
-          go-version-file: .github/go-version
+          go-version-file: .go-version
       - run: make test
