@@ -4,3 +4,6 @@
 # go test -c / go test -o が置くテストバイナリ (17MB 級)。`go test` 単体では作られないが、
 # ベンチや個別実行で -c を使うと untracked で現れる (実際に glogx.test が残った 2026-08-13)。
 /*.test
+
+# 作業用 (比較用の clone・検証の出力など)。手元の global gitignore に頼らない
+/tmp/
