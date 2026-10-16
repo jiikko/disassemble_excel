@@ -1,0 +1,16 @@
+cell	type	formula	value
+A1	s		単価
+B1	s		数量
+C1	s		小計
+A2	n		100
+B2	n		2
+C2	str	=A2*B2	
+A3	n		250
+B3	n		4
+C3	n	=A3*B3	
+A4	n		80
+B4	n		10
+C4	n	=A4*B4	
+A5	n		1200
+B5	n		1
+C5	n	=A5*B5	

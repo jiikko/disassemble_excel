@@ -1,0 +1,4 @@
+module	proc	kind	module_line
+Sheet1	Worksheet_BeforeDoubleClick	Sub	1
+Sheet1	Worksheet_SelectionChange	Sub	6
+Module1	Button1_Click	Sub	1

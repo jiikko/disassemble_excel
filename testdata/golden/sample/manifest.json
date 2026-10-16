@@ -1,0 +1,70 @@
+{
+  "source": "sample.xlsm",
+  "sha256": "f7b0f0b8b4f57440162153b62a842985a45bd846eee70203d4932148400c8c4b",
+  "extracted_at": "<EXTRACTED_AT>",
+  "tool_version": "0.1.0",
+  "sheets": [
+    {
+      "name": "Summary",
+      "dimension": "A1",
+      "cells": 18,
+      "formulas": 3,
+      "slim": false
+    },
+    {
+      "name": "Data",
+      "dimension": "A1",
+      "cells": 15,
+      "formulas": 4,
+      "slim": false
+    }
+  ],
+  "vba_modules": [
+    {
+      "name": "ThisWorkbook",
+      "type": "class",
+      "empty": true,
+      "procs": 0,
+      "lines": 0
+    },
+    {
+      "name": "Sheet1",
+      "type": "class",
+      "file": "vba/Sheet1.cls",
+      "empty": false,
+      "procs": 2,
+      "lines": 8
+    },
+    {
+      "name": "ThisWorkbook1",
+      "type": "class",
+      "empty": true,
+      "procs": 0,
+      "lines": 0
+    },
+    {
+      "name": "Module1",
+      "type": "standard",
+      "file": "vba/Module1.bas",
+      "empty": false,
+      "procs": 1,
+      "lines": 3
+    }
+  ],
+  "objects": [
+    {
+      "sheet": "Summary",
+      "name": "Shape 2",
+      "kind": "sp",
+      "anchor": "D2",
+      "macro": "Button1_Click"
+    },
+    {
+      "sheet": "Summary",
+      "name": "_x0000_s1025",
+      "kind": "button",
+      "anchor": "D6",
+      "macro": "Button2_Click"
+    }
+  ]
+}

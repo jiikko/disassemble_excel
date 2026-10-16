@@ -161,6 +161,14 @@ value はワークブックに保存されたキャッシュ値。値の中の�
 - ワークブックはメモリに読み込む。~70 MB のマクロ付きワークブックでおよそ 1 GB の
   RAM を要し、数秒で処理する。
 
+## 開発
+
+```sh
+make lint   # go mod tidy -diff / go list -m all / golangci-lint
+make test   # 単体テスト + E2E (testdata/sample.xlsm を解体して testdata/golden/ と比較)
+go test -run TestE2E -update .   # 出力を意図して変えたときに golden を作り直す
+```
+
 ## ライセンス
 
 [MIT](LICENSE)

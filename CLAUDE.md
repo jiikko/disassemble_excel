@@ -21,6 +21,10 @@ Excel ワークブック (`.xlsx` / `.xlsm` / `.xlsb`) を diff・grep できる
 ## ビルド・テスト
 
 - `make lint` / `make test` (CI の `.github/workflows/ci.yml` も同じ入口)
+- E2E: `e2e_test.go` が実バイナリを建てて `testdata/sample.xlsm` を解体し、出力を `testdata/golden/sample/` と全ファイル比較する (抽出日時と絶対パスだけ正規化)。
+  出力を意図して変えたら `go test -run TestE2E -update .` で golden を作り直し、diff を読んでから commit する
+- fixture は `go run ./testdata/gen` で作り直す (`vbaProject.bin` は excelize のテストデータ。BSD-3-Clause)。
+  excelize は数式を計算しないので、fixture の数式セルのキャッシュ値は空
 
 ## 詳しくは
 
