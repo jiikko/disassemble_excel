@@ -24,6 +24,9 @@ func TestShiftFormula(t *testing.T) {
 		{"function name untouched", "LOG10(A1)+ATAN2(B1,C1)", 1, 0, "LOG10(A2)+ATAN2(B2,C2)"},
 		{"prefixed function untouched", "_xlfn.XLOOKUP(A1,B:B,C:C)", 1, 0, "_xlfn.XLOOKUP(A2,B:B,C:C)"},
 		{"structured reference untouched", "SUM(Table1[Amount])+A1", 1, 0, "SUM(Table1[Amount])+A2"},
+		{"escaped ] in column name", "Table1[Q1']A1]+B1", 1, 0, "Table1[Q1']A1]+B2"},
+		{"escaped [ in column name", "Table1[a'[b]+A1", 1, 0, "Table1[a'[b]+A2"},
+		{"this-row structured reference", "Table1[[#This Row],[Qty]]*A1", 1, 0, "Table1[[#This Row],[Qty]]*A2"},
 		{"defined name untouched", "TaxRate*A1", 1, 0, "TaxRate*A2"},
 		{"numbers untouched", "A1*1.5+2E3", 1, 0, "A2*1.5+2E3"},
 		{"off the sheet becomes #REF!", "A1+B2", -1, 0, "#REF!+B1"},
@@ -45,6 +48,8 @@ func TestExtractSheetExpandsSharedFormula(t *testing.T) {
 <worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>
 <row r="1"><c r="B1"><f t="shared" ref="B1:C3" si="0">Inputs!A1+A1+$A$1</f><v>1</v></c><c r="C1"><f t="shared" si="0"/><v>2</v></c></row>
 <row r="3"><c r="B3"><f t="shared" si="0"/><v>3</v></c><c r="D3"><f t="shared" si="7"/><v>4</v></c></row>
+<row r="4"><c r="B4"><f t="shared" si="0"/><v>5</v></c><c r="C4"><f t="shared"/><v>6</v></c></row>
+<row r="5"><c r="E5"><f t="shared" ref="A1:F9" si="">Z1</f><v>7</v></c></row>
 </sheetData></worksheet>`
 	zr := zipReaderFrom(t, map[string]string{"xl/worksheets/sheet1.xml": sheet})
 	sh := extractSheet(zr, "xl/worksheets/sheet1.xml", "S", nil)
@@ -56,6 +61,8 @@ func TestExtractSheetExpandsSharedFormula(t *testing.T) {
 		"C1": "Inputs!B1+B1+$A$1",
 		"B3": "Inputs!A3+A3+$A$1",
 		"D3": "", // master si=7 is missing: keep the formula empty rather than guess
+		"B4": "", // outside the master's ref B1:C3
+		"C4": "", // no si: do not attach it to a master with si=""
 	}
 	got := map[string]string{}
 	for _, c := range sh.Cells {

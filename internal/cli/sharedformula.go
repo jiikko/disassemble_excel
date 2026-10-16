@@ -20,6 +20,27 @@ const (
 type sharedMaster struct {
 	formula  string
 	row, col int
+	// the group's range (ref attribute). A child outside it is not part of this group (a malformed file), so it is
+	// left without a formula rather than given a guessed one.
+	top, left, bottom, right int
+}
+
+func newSharedMaster(formula string, row, col int, ref string) sharedMaster {
+	m := sharedMaster{formula: formula, row: row, col: col, top: row, left: col, bottom: row, right: col}
+	from, to, isRange := strings.Cut(ref, ":")
+	if !isRange {
+		to = from
+	}
+	r1, c1 := splitAddr(strings.ReplaceAll(from, "$", ""))
+	r2, c2 := splitAddr(strings.ReplaceAll(to, "$", ""))
+	if r1 > 0 && c1 > 0 && r2 >= r1 && c2 >= c1 {
+		m.top, m.left, m.bottom, m.right = r1, c1, r2, c2
+	}
+	return m
+}
+
+func (m sharedMaster) contains(row, col int) bool {
+	return row >= m.top && row <= m.bottom && col >= m.left && col <= m.right
 }
 
 // shiftFormula returns formula with every relative A1 reference moved by (dRow, dCol). Absolute parts ($A$1, A$1, $A1)
@@ -28,6 +49,11 @@ type sharedMaster struct {
 // Left as is: string literals ("A1"), sheet / workbook prefixes (Inputs!, 'My Sheet'!, [1]Sheet!), function names
 // (LOG10(), structured references (Table1[Col]) and defined names. A defined name can never look like a cell
 // reference (Excel rejects such names), so a word that parses as a reference is one.
+//
+// Not handled, on the (unconfirmed) assumption that Excel never saves them in this form: lower-case
+// references (a1), trim-range operators written literally (A1:.B10; Excel saves _xlfn._TRO_*), and the shape of a range
+// whose one end leaves the sheet (A2:#REF!; Excel may turn the whole range into #REF!). These came from the adversarial
+// review of issue #2; to raise one again, attach an Excel-saved file that shows the formula text.
 func shiftFormula(formula string, dRow, dCol int) string {
 	if dRow == 0 && dCol == 0 {
 		return formula
@@ -69,6 +95,11 @@ func shiftFormula(formula string, dRow, dCol int) string {
 		case r == '[': // external workbook index or structured reference (may nest)
 			depth, j := 0, i
 			for j < len(rs) {
+				if rs[j] == '\'' && depth > 0 && j+1 < len(rs) {
+					// a structured-reference column name escapes [ ] # ' with a leading ' (Table1[Q1']A1])
+					j += 2
+					continue
+				}
 				if rs[j] == '[' {
 					depth++
 				} else if rs[j] == ']' {

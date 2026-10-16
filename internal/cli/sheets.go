@@ -147,6 +147,7 @@ type cXML struct {
 type fXML struct {
 	T       string `xml:"t,attr"`
 	SI      string `xml:"si,attr"`
+	Ref     string `xml:"ref,attr"`
 	Content string `xml:",chardata"`
 }
 type isXML struct {
@@ -205,17 +206,18 @@ func extractSheet(zr *zip.Reader, target, name string, shared []string) *Sheet {
 				continue
 			}
 			if c.F != nil && c.F.T == "shared" && cell.Formula != "" {
-				masters[c.F.SI] = sharedMaster{formula: cell.Formula, row: cell.Row, col: cell.Col}
+				masters[c.F.SI] = newSharedMaster(cell.Formula, cell.Row, cell.Col, c.F.Ref)
 			}
 			sh.Cells = append(sh.Cells, *cell)
 		}
 	}
 
 	// Expand shared-formula children (their formula text is empty in the XML). Done after the whole sheet is read so
-	// the result does not depend on the master appearing first. A child whose master is missing keeps an empty formula.
+	// the result does not depend on the master appearing first. A child whose master is missing, or that lies outside
+	// the master's ref, or has no si keeps an empty formula (a malformed file; better empty than a guess).
 	for i := range sh.Cells {
 		c := &sh.Cells[i]
-		if m, ok := masters[c.sharedSI]; ok && c.needExpand {
+		if m, ok := masters[c.sharedSI]; ok && c.needExpand && c.sharedSI != "" && m.contains(c.Row, c.Col) {
 			c.Formula = shiftFormula(m.formula, c.Row-m.row, c.Col-m.col)
 		}
 	}
