@@ -1,0 +1,14 @@
+# golangci-lint v2 config for disassemble_excel。linter は既定セットのまま (カスタム lint が
+# 必要になったら glogx の .golangci.yml を参照)。
+version: "2"
+
+# golangci-lint は既定で os.TempDir()/golangci-lint.lock に flock を取り、別インスタンスが走っていると
+# 5 秒待って "parallel golangci-lint is running" で落ちる。この lock はキャッシュ保護ではない
+# (キャッシュは内容アドレス) ので、外しても結果は変わらない。複数の repo の lint を並列に回しても落ちないようにする
+run:
+  allow-parallel-runners: true
+
+# gofmt を CI ゲートにする (v2 では formatter は linters と別枠。ここに無いと run が整形差分を見ない)
+formatters:
+  enable:
+    - gofmt
