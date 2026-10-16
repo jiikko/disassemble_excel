@@ -57,7 +57,6 @@ type DrawingObject struct {
 type Manifest struct {
 	Source      string          `json:"source"`
 	SHA256      string          `json:"sha256"`
-	ExtractedAt string          `json:"extracted_at"`
 	ToolVersion string          `json:"tool_version"`
 	Sheets      []SheetManifest `json:"sheets"`
 	VBAModules  []ModManifest   `json:"vba_modules"`

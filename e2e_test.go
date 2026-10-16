@@ -72,14 +72,13 @@ func runBin(t *testing.T, args ...string) result {
 	return result{stdout.String(), stderr.String(), code}
 }
 
-// Values that differ on every run or on every machine. Everything else in the output must be byte-identical.
+// Values that differ between machines (the output is compared with golden files made elsewhere). Nothing may differ
+// between runs: TestE2EDeterministic checks that without any normalization.
 var unstable = []struct {
 	re   *regexp.Regexp
 	repl string
 }{
-	{regexp.MustCompile(`"extracted_at": "[^"]*"`), `"extracted_at": "<EXTRACTED_AT>"`},
 	{regexp.MustCompile("(元 Excel ファイル（絶対パス） \\| )`[^`]*`"), "$1`<ABS_PATH>`"},
-	{regexp.MustCompile(`(抽出日時 \| )[^|]*\|`), "$1<EXTRACTED_AT> |"},
 }
 
 func normalize(b []byte) []byte {
@@ -247,4 +246,37 @@ func TestE2EExitCodes(t *testing.T) {
 			t.Errorf("-f must not delete existing files: %v", err)
 		}
 	})
+}
+
+// The output depends only on the input: disassembling the same file twice gives byte-identical trees, so regenerating
+// a committed output (and an LLM reading its diff) sees no noise. Compared without normalization.
+func TestE2EDeterministic(t *testing.T) {
+	var trees [2]map[string][]byte
+	for i := range trees {
+		out := filepath.Join(t.TempDir(), "out")
+		if r := runBin(t, fixture, "-o", out); r.code != 0 {
+			t.Fatalf("run %d: exit %d, stderr:\n%s", i, r.code, r.stderr)
+		}
+		trees[i] = map[string][]byte{}
+		err := filepath.WalkDir(out, func(path string, d fs.DirEntry, err error) error {
+			if err != nil || d.IsDir() {
+				return err
+			}
+			b, err := os.ReadFile(path)
+			rel, _ := filepath.Rel(out, path)
+			trees[i][rel] = b
+			return err
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(trees[0]) == 0 || len(trees[0]) != len(trees[1]) {
+		t.Fatalf("file counts differ or are zero: %d vs %d", len(trees[0]), len(trees[1]))
+	}
+	for rel, b := range trees[0] {
+		if !bytes.Equal(b, trees[1][rel]) {
+			t.Errorf("%s differs between two runs of the same input", rel)
+		}
+	}
 }

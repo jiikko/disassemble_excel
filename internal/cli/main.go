@@ -90,7 +90,7 @@ PATH か /Applications/LibreOffice.app に見つかれば、自動で .xlsm に�
 
 出力レイアウト:
   <out>/
-    README.md                来歴: 元ファイルの絶対パス・SHA-256・抽出日時と、各ファイルの意味
+    README.md                来歴: 元ファイルの絶対パス・SHA-256 と、各ファイルの意味
     manifest.json            元ファイルの SHA-256、シートごとの状態 (visible / hidden /
                              veryHidden)・寸法・セル数・数式数、VBA モジュール一覧、
                              マクロ割り当てオブジェクト一覧、下の TSV の件数 (counts)
@@ -298,7 +298,6 @@ func run(src, outDir, sheetsCSV string, maxCells int, noVBA, noGrid, force bool)
 	man := Manifest{
 		Source:      filepath.Base(origSrc),
 		SHA256:      fileSHA256(origSrc),
-		ExtractedAt: start.Format(time.RFC3339),
 		ToolVersion: toolVersion,
 		Sheets:      sheetManifests,
 		VBAModules:  modManifests,

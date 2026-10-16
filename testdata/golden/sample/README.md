@@ -12,7 +12,6 @@ Excel を開かずに、シートのセル数式・キャッシュ値・定義�
 | 元 Excel ファイル（絶対パス） | `<ABS_PATH>` |
 | 元 Excel ファイル名 | `sample.xlsm` |
 | 元ファイルの SHA-256 | `6a263a539897aff3f857689c65adf937ae8ef54364414f992f054f2244cdc0cb` |
-| 抽出日時 | <EXTRACTED_AT> |
 
 > 数式は **抽出のみで、評価（再計算）はしていません**。各セルの `value` 列は Excel が
 > 最後にファイルへ保存したキャッシュ値であり、このツールが計算した値ではありません。
@@ -21,7 +20,7 @@ Excel を開かずに、シートのセル数式・キャッシュ値・定義�
 
 | パス | 内容 |
 |------|------|
-| `manifest.json` | 機械可読の目録。元ファイル名・SHA-256・抽出日時・ツールバージョン、シートごとの状態 (visible / hidden / veryHidden)・寸法・セル数・数式数、VBA モジュール一覧、下の TSV の件数 (counts) を持つ |
+| `manifest.json` | 機械可読の目録。元ファイル名・SHA-256・ツールバージョン、シートごとの状態 (visible / hidden / veryHidden)・寸法・セル数・数式数、VBA モジュール一覧、下の TSV の件数 (counts) を持つ |
 | `README.md` | このファイル（出力の説明・元ソース・各ファイルの意味） |
 | `defined_names.tsv` | 定義名（名前付き範囲・LAMBDA 引数）。列は `name  scope  refers_to  hidden`（hidden は隠し名なら 1） |
 | `sheets/<シート名>.cells.tsv` | シートの全セルを 1 セル 1 行で。列は `cell  type  formula  value`、(行,列) でソート・空セルは省略。値中のタブ/改行は `\t` `\n` にエスケープ |
