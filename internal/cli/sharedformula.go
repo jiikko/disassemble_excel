@@ -21,26 +21,30 @@ type sharedMaster struct {
 	formula  string
 	row, col int
 	// the group's range (ref attribute). A child outside it is not part of this group (a malformed file), so it is
-	// left without a formula rather than given a guessed one.
+	// left without a formula rather than given a guessed one. bounded is false when ref cannot be read: then no child
+	// is dropped, because an unreadable ref says nothing about which cells belong to the group.
+	bounded                  bool
 	top, left, bottom, right int
 }
 
 func newSharedMaster(formula string, row, col int, ref string) sharedMaster {
-	m := sharedMaster{formula: formula, row: row, col: col, top: row, left: col, bottom: row, right: col}
-	from, to, isRange := strings.Cut(ref, ":")
+	m := sharedMaster{formula: formula, row: row, col: col}
+	from, to, isRange := strings.Cut(strings.ToUpper(strings.ReplaceAll(strings.TrimSpace(ref), "$", "")), ":")
 	if !isRange {
 		to = from
 	}
-	r1, c1 := splitAddr(strings.ReplaceAll(from, "$", ""))
-	r2, c2 := splitAddr(strings.ReplaceAll(to, "$", ""))
-	if r1 > 0 && c1 > 0 && r2 >= r1 && c2 >= c1 {
-		m.top, m.left, m.bottom, m.right = r1, c1, r2, c2
+	_, c1, _, r1, ok1 := parseRef(from)
+	_, c2, _, r2, ok2 := parseRef(to)
+	if ok1 && ok2 {
+		m.bounded = true
+		m.top, m.bottom = min(r1, r2), max(r1, r2)
+		m.left, m.right = min(c1, c2), max(c1, c2)
 	}
 	return m
 }
 
 func (m sharedMaster) contains(row, col int) bool {
-	return row >= m.top && row <= m.bottom && col >= m.left && col <= m.right
+	return !m.bounded || (row >= m.top && row <= m.bottom && col >= m.left && col <= m.right)
 }
 
 // shiftFormula returns formula with every relative A1 reference moved by (dRow, dCol). Absolute parts ($A$1, A$1, $A1)

@@ -74,3 +74,31 @@ func TestExtractSheetExpandsSharedFormula(t *testing.T) {
 		}
 	}
 }
+
+// The ref of a shared formula only drops children that are clearly outside it. Odd but readable refs are normalized,
+// and an unreadable ref drops nothing (an earlier version collapsed it to the master cell and lost every child).
+func TestSharedMasterRef(t *testing.T) {
+	cases := []struct {
+		ref      string
+		row, col int
+		want     bool
+	}{
+		{"B1:C3", 3, 3, true},
+		{"B1:C3", 4, 2, false},
+		{"$B$1:$C$3", 3, 3, true},
+		{"b1:c3", 3, 3, true},  // lower case
+		{"C3:B1", 3, 3, true},  // reversed corners
+		{"C1:B3", 1, 2, true},  // the other diagonal
+		{"C1:B3", 4, 2, false}, // still bounded
+		{"B1", 1, 2, true},     // single cell
+		{"B1", 2, 2, false},
+		{"", 9, 9, true},        // missing ref: cannot tell, keep the child
+		{"garbage", 9, 9, true}, // unreadable ref: cannot tell, keep the child
+	}
+	for _, c := range cases {
+		m := newSharedMaster("A1", 1, 2, c.ref)
+		if got := m.contains(c.row, c.col); got != c.want {
+			t.Errorf("ref %q contains(%d,%d) = %v, want %v", c.ref, c.row, c.col, got, c.want)
+		}
+	}
+}
