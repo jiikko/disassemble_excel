@@ -16,7 +16,7 @@ concurrency:
 jobs:
   lint:
     # macOS で開発・利用している。`macos-latest` はラベルの移動で環境が黙って変わるので pin する
-    runs-on: macos-15
+    runs-on: macos-26
     # golangci-lint を go run でソースからビルドするので、cache が cold だと時間がかかる
     timeout-minutes: 25
     steps:
@@ -27,7 +27,7 @@ jobs:
       - run: make lint
 
   test:
-    runs-on: macos-15
+    runs-on: macos-26
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
